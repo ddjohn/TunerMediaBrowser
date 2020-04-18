@@ -39,7 +39,7 @@ public class MyMediabrowserService extends MediaBrowserService {
 
         METHOD(TAG, "onCreate");
 
-        RadioManager radio = (RadioManager)getSystemService(Context.RADIO_SERVICE);
+        //RadioManager radio = (RadioManager)getSystemService(Context.RADIO_SERVICE);
 
         mediaSession = new MediaSession(this, "ddjohn");
         mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
