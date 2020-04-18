@@ -1,0 +1,2 @@
+rootProject.name='tuner'
+include ':app'
