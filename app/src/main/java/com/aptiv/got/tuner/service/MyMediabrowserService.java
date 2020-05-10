@@ -5,6 +5,9 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.MediaPlayer;
 import android.media.browse.MediaBrowser;
@@ -15,9 +18,12 @@ import android.os.Bundle;
 import android.service.media.MediaBrowserService;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.MenuItem;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+//import com.android.server.broadcastradio.BroadcastRadioService;
 import com.aptiv.got.tuner.R;
 
 import java.io.IOException;
@@ -28,10 +34,11 @@ import static com.aptiv.got.tuner.utils.Debug.END;
 import static com.aptiv.got.tuner.utils.Debug.METHOD;
 import static com.aptiv.got.tuner.utils.Debug.OBJECT;
 
-public class MyMediabrowserService extends MediaBrowserService {
+public class MyMediabrowserService extends MediaBrowserService implements AudioManager.OnAudioFocusChangeListener {
     private static final String TAG = MyMediabrowserService.class.getSimpleName();
 
     private MediaSession mediaSession;
+    private AudioManager audioManager;
 
     @Override
     public void onCreate() {
@@ -39,78 +46,35 @@ public class MyMediabrowserService extends MediaBrowserService {
 
         METHOD(TAG, "onCreate");
 
-        //RadioManager radio = (RadioManager)getSystemService(Context.RADIO_SERVICE);
+        audioManager = (AudioManager)this.getSystemService(Context.AUDIO_SERVICE);
+
+        //android.hardware.broadcastradio.V2_0.IBroadcastRadio.Proxy
+       // RadioManager radio = (RadioManager)getSystemService(Context.RADIO_SERVICE);
+      //  OBJECT(TAG, radio);
+        //BroadcastRadioService service = (BroadcastRadioService)this.getSystemService(/*Context.RADIO_SERVICE*/ "radio_service");
+
+        OBJECT(TAG, Context.ALARM_SERVICE, Context.WIFI_RTT_RANGING_SERVICE);
 
         mediaSession = new MediaSession(this, "ddjohn");
-        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setFlags(
+                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|
+                        MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
-        PlaybackState.Builder stateBuilder = new PlaybackState.Builder().setActions(PlaybackState.ACTION_PLAY|PlaybackState.ACTION_PLAY_PAUSE);
+        PlaybackState.Builder stateBuilder = new PlaybackState.Builder().setActions(
+                PlaybackState.ACTION_PLAY|
+                        PlaybackState.ACTION_PLAY_PAUSE);
         mediaSession.setPlaybackState(stateBuilder.build());
 
         MediaController controller = mediaSession.getController();
-        controller.registerCallback(new MediaController.Callback() {
-
-                                        @Override
-                                        public void onSessionDestroyed() {
-                                            super.onSessionDestroyed();
-
-                                            Log.e(TAG, "onSessionDestroyed");
-                                        }
-
-                                        @Override
-                                        public void onSessionEvent(@NonNull String event, @Nullable Bundle extras) {
-                                            super.onSessionEvent(event, extras);
-
-                                            Log.e(TAG, "onSessionEvent");
-                                        }
-
-                                        @Override
-                                        public void onPlaybackStateChanged(@Nullable PlaybackState state) {
-                                            super.onPlaybackStateChanged(state);
-
-                                            Log.e(TAG, "onPlaybackStateChanged");
-
-                                            OBJECT(TAG, state);
-                                        }
-
-                                        @Override
-                                        public void onMetadataChanged(@Nullable MediaMetadata metadata) {
-                                            super.onMetadataChanged(metadata);
-
-                                            Log.e(TAG, "onMetadataChanged");
-                                        }
-
-                                        @Override
-                                        public void onQueueChanged(@Nullable List<MediaSession.QueueItem> queue) {
-                                            super.onQueueChanged(queue);
-
-                                            Log.e(TAG, "onQueueChanged");
-                                        }
-
-                                        @Override
-                                        public void onQueueTitleChanged(@Nullable CharSequence title) {
-                                            super.onQueueTitleChanged(title);
-
-                                            Log.e(TAG, "onQueueTitleChanged");
-                                        }
-
-                                        @Override
-                                        public void onExtrasChanged(@Nullable Bundle extras) {
-                                            super.onExtrasChanged(extras);
-
-                                            Log.e(TAG, "onExtrasChanged");
-                                        }
-
-                                        @Override
-                                        public void onAudioInfoChanged(MediaController.PlaybackInfo info) {
-                                            super.onAudioInfoChanged(info);
-
-                                            Log.e(TAG, "onAudioInfoChanged");
-                                        }
-                                    }
-        );
 
         final MediaPlayer player = new MediaPlayer();
+
+        final AudioAttributes attributes = new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).setUsage(AudioAttributes.USAGE_MEDIA).build();
+
+        final AudioFocusRequest audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+               .setAudioAttributes(attributes)
+                .setOnAudioFocusChangeListener(this)
+               .build();
 
         mediaSession.setCallback(new MediaSession.Callback() {
 
@@ -120,6 +84,7 @@ public class MyMediabrowserService extends MediaBrowserService {
 
                 METHOD(TAG, "pause");
 
+                audioManager.abandonAudioFocusRequest(audioFocusRequest);
                 player.pause();
 
                 END();
@@ -130,6 +95,9 @@ public class MyMediabrowserService extends MediaBrowserService {
                 super.onPlay();
 
                 METHOD(TAG, "onPlay");
+
+                if(audioManager.requestAudioFocus(audioFocusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                    return;
 
                 player.start();
 
@@ -196,7 +164,6 @@ public class MyMediabrowserService extends MediaBrowserService {
 
         //player.setAudioStreamType(AudioManager.STREAM_MUSIC);
 
-        AudioAttributes attributes = new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).setUsage(AudioAttributes.USAGE_MEDIA).build();
         player.setAudioAttributes(attributes);
         player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
@@ -241,11 +208,15 @@ public class MyMediabrowserService extends MediaBrowserService {
 
         OBJECT(TAG, parentMediaId, result);
 
-        List<MediaBrowser.MediaItem> mediaItems = new ArrayList<>();
+        List<MediaBrowser.MediaItem> items = new ArrayList<>();
 
-        if ("root".equals(parentMediaId)) {
+
+        if ("root".equals(items)) {
             // Build the MediaItem objects for the top level,
             // and put them in the mediaItems list...
+          //  MediaBrowser.MediaItem menu = new MediaBrowser.MediaItem(
+            //        new MediaDescription("test", ""), 0);
+          //  items.add(menu);
         } else {
             // Examine the passed parentMediaId to see which submenu we're at,
             // and put the children of that menu in the mediaItems list...
@@ -253,6 +224,15 @@ public class MyMediabrowserService extends MediaBrowserService {
 
         END();
 
-        result.sendResult(mediaItems);
+        result.sendResult(items);
+    }
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+        METHOD(TAG,"onAudioFocusChange");
+
+        OBJECT(TAG, focusChange);
+
+        END();
     }
 }
